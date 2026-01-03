@@ -1,18 +1,14 @@
-# Core libraries for data processing and manipulation
-pandas==2.1.1
-numpy==1.26.0
-
-# Libraries for working with LLMs and NLP
-openai==0.28.0
-transformers==4.35.0
-langchain==0.0.300
-
-# Libraries for text preprocessing and analysis
-nltk==3.9.0
-spacy==3.7.0
-scikit-learn==1.4.0
-
-
-fastapi==0.103.0
-uvicorn==0.24.0
-pydantic==2.12.5
+pandas==2.2.2
+numpy==1.26.4
+openai==1.52.0
+transformers==4.45.2
+langchain==0.3.14
+langchain-openai==0.2.9
+langchain-community==0.3.14
+fastapi==0.115.5
+uvicorn==0.30.6
+pydantic==2.9.2
+python-dotenv==1.0.1
+pypdf==5.0.1
+orjson==3.10.7
+tenacity==9.0.0
