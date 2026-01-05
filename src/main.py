@@ -1,15 +1,15 @@
 import json
 from typing import Optional
-import PyPDF2
-from langchain_openai import ChatOpenAI
+import fitz
+from langchain_ollama import ChatOllama
 
 from schemas import Resume
 from prompts import get_resume_extraction_prompt
 
 
-def extract_text_from_pdf(pdf_path: str) -> str:
+def read_file(pdf_path: str) -> str:
     """
-    Extract raw text from a PDF file.
+    Extract raw text from a PDF file using pymupdf.
     
     Args:
         pdf_path: Path to the PDF file
@@ -19,28 +19,28 @@ def extract_text_from_pdf(pdf_path: str) -> str:
     """
     text = ""
     try:
-        with open(pdf_path, 'rb') as file:
-            pdf_reader = PyPDF2.PdfReader(file)
-            for page in pdf_reader.pages:
-                text += page.extract_text()
+        doc = fitz.open(pdf_path)
+        for page in doc:
+            text += page.get_text()
+        doc.close()
         return text
     except Exception as e:
         raise ValueError(f"Error reading PDF file: {str(e)}")
 
 
-def extract_resume_data(resume_text: str, api_key: Optional[str] = None, model: str = "gpt-4-turbo") -> Resume:
+def extract_resume_data(resume_text: str, api_key: Optional[str] = None, model: str = "gemini-pro") -> Resume:
     """
     Extract structured resume data from text using LLM.
     
     Args:
         resume_text: Raw resume text
-        api_key: OpenAI API key (if None, uses OPENAI_API_KEY env var)
-        model: LLM model to use (default: gpt-4-turbo)
+        api_key: Google API key (if None, uses GOOGLE_API_KEY env var)
+        model: LLM model to use (default: gemini-pro)
         
     Returns:
         Resume: Structured resume data
     """
-    llm = ChatOpenAI(api_key=api_key, model=model, temperature=0)
+    llm = ChatOllama(model="llama3.1", temperature=0)
     extraction_prompt = get_resume_extraction_prompt()
     
     # Format the prompt with resume text
@@ -62,41 +62,38 @@ def extract_resume_data(resume_text: str, api_key: Optional[str] = None, model: 
     return resume
 
 
-def process_pdf(pdf_path: str, api_key: Optional[str] = None, model: str = "gpt-4-turbo") -> Resume:
+def process_pdf(resume_text: str, api_key: Optional[str] = None, model: str = "gemini-pro") -> Resume:
     """
     End-to-end pipeline: Extract text from PDF and parse resume data.
     
     Args:
-        pdf_path: Path to the PDF resume file
-        api_key: OpenAI API key
+        resume_text: Raw resume text
+        api_key: Google API key
         model: LLM model to use
         
     Returns:
         Resume: Structured resume data
     """
-    # Extract text from PDF
-    resume_text = extract_text_from_pdf(pdf_path)
-    
     # Extract structured data
     resume = extract_resume_data(resume_text, api_key=api_key, model=model)
     
     return resume
 
 
-def score_match(resume: Resume, job_description: str, api_key: Optional[str] = None, model: str = "gpt-4-turbo") -> dict:
+def score_match(resume: Resume, job_description: str, api_key: Optional[str] = None, model: str = "gemini-pro") -> dict:
     """
     Score how well a resume matches a job description.
     
     Args:
         resume: Structured resume data
         job_description: Job description text
-        api_key: OpenAI API key
+        api_key: Google API key
         model: LLM model to use
         
     Returns:
         dict: Match score and analysis
     """
-    llm = ChatOpenAI(api_key=api_key, model=model, temperature=0)
+    llm = ChatGoogleGenerativeAI(api_key=api_key, model=model, temperature=0)
     resume_json = resume.model_dump_json(indent=2)
     
     prompt = f"""You are an expert recruiter. Analyze the following resume and job description to provide a match score.
@@ -134,29 +131,29 @@ def main():
     """Example usage of resume extraction and job matching."""
     
     # Process resume PDF
-    pdf_path = "sample_data/sample_cv.pdf"
+    pdf_path = "src/sample_data/sample_cv.pdf"
     
     try:
-        # Extract resume data
-        resume = process_pdf(pdf_path)
+        resume_text = read_file(pdf_path)
+        resume = process_pdf(resume_text)
         
         print("Extracted Resume Data:")
         print(resume.model_dump_json(indent=2))
         
-        # Example job description
-        job_description = """
-        We are looking for a Senior Software Engineer with:
-        - 5+ years of Python experience
-        - Strong background in web development
-        - Experience with PostgreSQL
-        - Bachelor's degree in Computer Science or related field
-        """
+        # # Example job description
+        # job_description = """
+        # We are looking for a Senior Software Engineer with:
+        # - 5+ years of Python experience
+        # - Strong background in web development
+        # - Experience with PostgreSQL
+        # - Bachelor's degree in Computer Science or related field
+        # """
         
-        # Score the match
-        match_score = score_match(resume, job_description)
+        # # Score the match
+        # match_score = score_match(resume, job_description)
         
-        print("\nJob Match Score:")
-        print(json.dumps(match_score, indent=2))
+        # print("\nJob Match Score:")
+        # print(json.dumps(match_score, indent=2))
         
     except FileNotFoundError:
         print(f"Error: PDF file '{pdf_path}' not found")
