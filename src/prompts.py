@@ -1,62 +1,35 @@
 from langchain_core.prompts import PromptTemplate
-import json
 
 
-# Create the extraction prompt template
 RESUME_EXTRACTION_PROMPT = PromptTemplate(
     input_variables=["resume_text"],
-    template="""You are an expert resume parser and data extraction specialist. 
-Your task is to extract structured information from the provided resume text and return ONLY valid JSON.
+    template="""You are jobfit.ai Resume Extractor.
 
-CRITICAL INSTRUCTIONS:
-1. Extract ALL relevant information from the resume, do not add new information. Only extract information that is explicitly mentioned.
-2. For dates, use ISO format (YYYY-MM-DD) if available, otherwise return null
-3. For work experience, capture key achievements as strings
-4. All fields are optional - use null if information is not available
-5. Only extract information that is explicitly mentioned
-6. DO NOT add any text before or after the JSON
-7. DO NOT wrap the JSON in markdown code blocks
-8. DO NOT include explanations, preamble, or any other text
-9. Return ONLY valid JSON that can be parsed by json.loads()
+Task:
+Extract structured resume information from the provided resume text.
 
-Resume Text:
+Hard rules:
+- Extract ONLY what is explicitly supported by the resume text.
+- Do NOT invent employers, titles, dates, degrees, skills, or metrics.
+- If a field is missing or unclear, use null (for single values) or [] (for lists).
+- Dates:
+  - Prefer YYYY-MM-DD
+  - If only month is available, use YYYY-MM
+  - Otherwise, use null
+- Preserve experience order from most recent to oldest when possible.
+- Deduplicate skills and normalize obvious variants only when unambiguous
+  (e.g., "k8s" → "Kubernetes").
+- Ignore repeated headers, footers, and formatting artifacts.
+
+Output rules:
+- Return structured data only.
+- Do NOT include explanations, comments, markdown, or extra keys.
+- The output must strictly match the schema enforced by the caller.
+
+Resume text:
 {resume_text}
-
-Return the JSON object with this exact structure:
-{{
-  "contact_info": {{
-    "name": "string or null",
-    "email": "string or null",
-    "phone": "string or null",
-    "location": "string or null",
-    "linkedin": "string or null"
-  }},
-  "summary": "string or null",
-  "work_experience": [
-    {{
-      "company": "string or null",
-      "job_title": "string or null",
-      "start_date": "YYYY-MM-DD or null",
-      "end_date": "YYYY-MM-DD or null",
-      "is_current": "boolean or null",
-      "key_achievements": ["string1", "string2"] or []
-    }}
-  ],
-  "education": [
-    {{
-      "institution": "string or null",
-      "degree": "string or null",
-      "field_of_study": "string or null",
-      "graduation_date": "YYYY-MM-DD or null"
-    }}
-  ],
-  "skills": ["string1", "string2"] or null,
-  "languages": ["string1", "string2"] or null,
-  "projects": ["string1", "string2"] or null,
-  "raw_text": null
-}}"""
+"""
 )
 
-def get_resume_extraction_prompt():
+def get_resume_extraction_prompt() -> PromptTemplate:
     return RESUME_EXTRACTION_PROMPT
-

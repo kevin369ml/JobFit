@@ -1,3 +1,4 @@
+import re
 import json
 from typing import Optional
 import fitz
@@ -6,17 +7,19 @@ from langchain_ollama import ChatOllama
 from schemas import Resume
 from prompts import get_resume_extraction_prompt
 
+def clean_resume_text(text: str) -> str:
+    # normalize weird bullets / zero-width spaces
+    text = text.replace("\u200b", "").replace("\ufeff", "")
+    # normalize common bullet characters to "-"
+    text = text.replace("●", "-").replace("•", "-").replace("​", " ")
+    # collapse excessive whitespace
+    text = re.sub(r"[ \t]+", " ", text)
+    # keep line breaks but collapse 3+ newlines
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    text = re.sub(r"\n", " ", text)
+    return text.strip()
 
 def read_file(pdf_path: str) -> str:
-    """
-    Extract raw text from a PDF file using pymupdf.
-    
-    Args:
-        pdf_path: Path to the PDF file
-        
-    Returns:
-        str: Extracted text from the PDF
-    """
     text = ""
     try:
         doc = fitz.open(pdf_path)
@@ -28,83 +31,24 @@ def read_file(pdf_path: str) -> str:
         raise ValueError(f"Error reading PDF file: {str(e)}")
 
 
-def extract_resume_data(resume_text: str, api_key: Optional[str] = None, model: str = "gemini-pro") -> Resume:
-    """
-    Extract structured resume data from text using LLM.
-    
-    Args:
-        resume_text: Raw resume text
-        api_key: Google API key (if None, uses GOOGLE_API_KEY env var)
-        model: LLM model to use (default: gemini-pro)
-        
-    Returns:
-        Resume: Structured resume data
-    """
-    llm = ChatOllama(model="llama3.1", temperature=0)
-    extraction_prompt = get_resume_extraction_prompt()
-    
-    # Format the prompt with resume text
-    formatted_prompt = extraction_prompt.format(resume_text=resume_text)
-    
-    # Call LLM
-    response = llm.invoke(formatted_prompt)
-    print("LLM Response (markdown format):", response.content)
+def extract_resume_data(resume_text) -> Resume:
+    # llm = ChatOllama(model="llama3.1", temperature=0)
+    # llm = ChatOllama(model="qwen2.5:7b", temperature=0)
+    # llm = ChatOllama(model="deepseek-r1:1.5b", temperature=0)
+    llm = ChatOllama(model="deepseek-r1:7b", temperature=0)
 
-    # Extract JSON from response
-    try:
-        json_str = response.content.strip()
-        
-        # Remove markdown code blocks if present
-        if json_str.startswith("```json"):
-            json_str = json_str[7:]  # Remove ```json
-        if json_str.startswith("```"):
-            json_str = json_str[3:]  # Remove ```
-        if json_str.endswith("```"):
-            json_str = json_str[:-3]  # Remove trailing ```
-        
-        json_str = json_str.strip()
-        resume_dict = json.loads(json_str)
-    except json.JSONDecodeError as e:
-        raise ValueError(f"Failed to parse LLM response as JSON: {str(e)}\nResponse: {response.content}")
-    
-    
-    # Validate and create Resume object
-    resume = Resume(**resume_dict)
-    resume.raw_text = resume_text  # Store raw text for RAG
+    chain = get_resume_extraction_prompt() | llm.with_structured_output(Resume)
+    resume = chain.invoke({"resume_text": resume_text})
+    resume.raw_text = resume_text
     return resume
 
 
-def process_pdf(resume_text: str, api_key: Optional[str] = None, model: str = "gemini-pro") -> Resume:
-    """
-    End-to-end pipeline: Extract text from PDF and parse resume data.
-    
-    Args:
-        resume_text: Raw resume text
-        api_key: Google API key
-        model: LLM model to use
-        
-    Returns:
-        Resume: Structured resume data
-    """
-    # Extract structured data
-    resume = extract_resume_data(resume_text, api_key=api_key, model=model)
-    
+def process_pdf(resume_text) -> Resume:
+    resume = extract_resume_data(resume_text)
     return resume
 
 
 def score_match(resume: Resume, job_description: str, api_key: Optional[str] = None, model: str = "gemini-pro") -> dict:
-    """
-    Score how well a resume matches a job description.
-    
-    Args:
-        resume: Structured resume data
-        job_description: Job description text
-        api_key: Google API key
-        model: LLM model to use
-        
-    Returns:
-        dict: Match score and analysis
-    """
     llm = ChatOllama(model="llama3.1", temperature=0)
     resume_json = resume.model_dump_json(indent=2)
     
@@ -140,39 +84,30 @@ Return ONLY the JSON object, no additional text."""
 
 
 def main():
-    """Example usage of resume extraction and job matching."""
     
     # Process resume PDF
-    pdf_path = "src/sample_data/sample_cv.pdf"
+    pdf_path = "src/sample_data/small.pdf"
     
-    try:
-        resume_text = read_file(pdf_path)
-        resume = process_pdf(resume_text)
+    resume_text = read_file(pdf_path)
+    resume_text = clean_resume_text(resume_text)
+    resume = process_pdf(resume_text)
+    print(resume.model_dump_json(indent=2))
+    
+    # # Example job description
+    # job_description = """
+    # We are looking for a Senior Software Engineer with:
+    # - 5+ years of Python experience
+    # - Strong background in web development
+    # - Experience with PostgreSQL
+    # - Bachelor's degree in Computer Science or related field
+    # """
+    
+    # # Score the match
+    # match_score = score_match(resume, job_description)
+    
+    # print("\nJob Match Score:")
+    # print(json.dumps(match_score, indent=2))
         
-        print("Extracted Resume Data:")
-        print("\nJSON Format:")
-        print(resume.model_dump_json(indent=2))
-        
-        # # Example job description
-        # job_description = """
-        # We are looking for a Senior Software Engineer with:
-        # - 5+ years of Python experience
-        # - Strong background in web development
-        # - Experience with PostgreSQL
-        # - Bachelor's degree in Computer Science or related field
-        # """
-        
-        # # Score the match
-        # match_score = score_match(resume, job_description)
-        
-        # print("\nJob Match Score:")
-        # print(json.dumps(match_score, indent=2))
-        
-    except FileNotFoundError:
-        print(f"Error: PDF file '{pdf_path}' not found")
-    except Exception as e:
-        print(f"Error: {str(e)}")
-
 
 if __name__ == "__main__":
     main()
