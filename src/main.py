@@ -48,13 +48,25 @@ def extract_resume_data(resume_text: str, api_key: Optional[str] = None, model: 
     
     # Call LLM
     response = llm.invoke(formatted_prompt)
-    
+    print("LLM Response (markdown format):", response.content)
+
     # Extract JSON from response
     try:
         json_str = response.content.strip()
+        
+        # Remove markdown code blocks if present
+        if json_str.startswith("```json"):
+            json_str = json_str[7:]  # Remove ```json
+        if json_str.startswith("```"):
+            json_str = json_str[3:]  # Remove ```
+        if json_str.endswith("```"):
+            json_str = json_str[:-3]  # Remove trailing ```
+        
+        json_str = json_str.strip()
         resume_dict = json.loads(json_str)
     except json.JSONDecodeError as e:
         raise ValueError(f"Failed to parse LLM response as JSON: {str(e)}\nResponse: {response.content}")
+    
     
     # Validate and create Resume object
     resume = Resume(**resume_dict)
@@ -93,7 +105,7 @@ def score_match(resume: Resume, job_description: str, api_key: Optional[str] = N
     Returns:
         dict: Match score and analysis
     """
-    llm = ChatGoogleGenerativeAI(api_key=api_key, model=model, temperature=0)
+    llm = ChatOllama(model="llama3.1", temperature=0)
     resume_json = resume.model_dump_json(indent=2)
     
     prompt = f"""You are an expert recruiter. Analyze the following resume and job description to provide a match score.
@@ -138,6 +150,7 @@ def main():
         resume = process_pdf(resume_text)
         
         print("Extracted Resume Data:")
+        print("\nJSON Format:")
         print(resume.model_dump_json(indent=2))
         
         # # Example job description
